@@ -1,0 +1,146 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      Role     @default(BUYER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  seller    Seller?
+  orders    Order[]
+  reviews   Review[]
+
+  @@map("users")
+}
+
+model Seller {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  products  Product[]
+  payouts   Payout[]
+
+  @@map("sellers")
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  price       Decimal       @db.Decimal(10, 2)
+  category    Category
+  type        ProductType
+  status      ProductStatus @default(PENDING)
+  fileUrl     String?
+  trailerUrl  String?
+  sellerId    String
+  seller      Seller        @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  orders      Order[]
+  reviews     Review[]
+
+  @@map("products")
+}
+
+model Order {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  amount    Decimal     @db.Decimal(10, 2)
+  status    OrderStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@map("orders")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      @db.SmallInt
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+  @@map("reviews")
+}
+
+model Payout {
+  id        String       @id @default(cuid())
+  sellerId  String
+  seller    Seller       @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  amount    Decimal      @db.Decimal(10, 2)
+  status    PayoutStatus @default(REQUESTED)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@map("payouts")
+}
+
+enum Role {
+  BUYER
+  SELLER
+  ADMIN
+}
+
+enum Category {
+  EBOOKS
+  SOFTWARE
+  MUSIC
+  VIDEOS
+  DOCUMENTS
+}
+
+enum ProductType {
+  ZIP
+  PDF
+  DOCX
+  MP4
+  MP3
+}
+
+enum ProductStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PayoutStatus {
+  REQUESTED
+  APPROVED
+  PAID
+  REJECTED
+}
