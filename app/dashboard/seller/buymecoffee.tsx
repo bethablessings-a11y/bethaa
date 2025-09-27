@@ -33,38 +33,46 @@ export default function BuyMeCoffeeTab() {
 
   // Define fetchCoffeeLink FIRST, before useEffect
   const fetchCoffeeLink = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        setDebugInfo("No user found")
-        return
-      }
-
-      const { data, error } = await supabase
-        .from('coffee_links')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          setDebugInfo("No existing coffee link found")
-          return
-        }
-        setDebugInfo(`Fetch error: ${error.message}`)
-        return
-      }
-
-      if (data) {
-        setExistingLink(data)
-        setCoffeeLink(data.coffee_link)
-        setDebugInfo(`Found existing link: ${data.coffee_link}`)
-      }
-    } catch (error: any) {
-      setDebugInfo(`Error: ${error.message}`)
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.log('❌ No user found')
+      return
     }
-  }
 
+    console.log('🔍 Fetching coffee link for user:', user.id)
+    console.log('📧 User email:', user.email)
+    
+    const { data, error } = await supabase
+      .from('coffee_links')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    console.log('📋 Fetch results:', { 
+      data, 
+      error,
+      userMatches: user.id === 'c9422c5e-2844-48ff-9e6d-de92b01e9880'
+    })
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('❌ Fetch error:', error)
+      return
+    }
+
+    if (data) {
+      console.log('✅ Found link:', data.coffee_link)
+      setExistingLink(data)
+      setCoffeeLink(data.coffee_link)
+    } else {
+      console.log('ℹ️ No coffee link found for current user')
+      console.log('💡 User might need to generate a new link')
+    }
+
+  } catch (error: any) {
+    console.error('💥 Error in fetchCoffeeLink:', error)
+  }
+}
   // Define fetchPayments SECOND
   const fetchPayments = async () => {
     try {
@@ -143,11 +151,13 @@ export default function BuyMeCoffeeTab() {
     fetchCoffeeLink()
   }, [])
 
-  useEffect(() => {
-    if (existingLink) {
-      fetchPayments()
-    }
-  }, [existingLink])
+ // Add this useEffect to log the current state
+useEffect(() => {
+  console.log('🔄 Component state updated:')
+  console.log('📝 Coffee Link:', coffeeLink)
+  console.log('🗂️ Existing Link:', existingLink)
+  console.log('🔗 Full URL:', coffeeLink ? `${window.location.origin}/coffee/${coffeeLink}` : 'No link')
+}, [coffeeLink, existingLink])
 
   const generateUniqueLink = (): string => {
     return `coffee-${Math.random().toString(36).substring(2, 10)}`
@@ -383,15 +393,29 @@ export default function BuyMeCoffeeTab() {
 
               {/* Action Buttons */}
               <div className="flex space-x-3">
-                <a
-                  href={getFullCoffeeLink()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
-                >
-                  <span>🔗</span>
-                  <span>Test Your Link</span>
-                </a>
+                    <a
+  href={getFullCoffeeLink()}
+  target="_blank"
+  rel="noopener noreferrer"
+  onClick={(e) => {
+    console.log('🧪 Testing link click:')
+    console.log('🔗 Link being tested:', getFullCoffeeLink())
+    console.log('📝 Coffee link value:', coffeeLink)
+    console.log('👤 Current user link should be:', 'coffee-4hzjurz0') // From your database
+    console.log('💾 Database has links:', ['test-coffee-123', 'coffee-4hzjurz0']) // From your JSON
+    
+    // Check if the link matches what's in database
+    if (coffeeLink !== 'coffee-4hzjurz0') {
+      console.warn('⚠️ LINK MISMATCH: Current link does not match database!')
+      console.warn('Expected: coffee-4hzjurz0')
+      console.warn('Actual:', coffeeLink)
+    }
+  }}
+  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
+>
+  <span>🔗</span>
+  <span>Test Your Link</span>
+</a>
                 <button
                   onClick={handleGenerateLink}
                   disabled={loading}
