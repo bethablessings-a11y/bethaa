@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client"
 import { redirect } from "next/navigation"
 import { User } from "@supabase/supabase-js"
 import BuyMeCoffeeTab from "./buymecoffee"
-import TestSupabase from "@/components/test-supabase" // Add this import
 
 export default function SellerDashboard() {
   const [user, setUser] = useState<User | null>(null)
@@ -50,8 +49,6 @@ export default function SellerDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-900">
-      <TestSupabase /> {/* Add this line */}
-      
       {/* Sidebar */}
       <div className="fixed left-0 top-0 h-full w-64 bg-slate-800 p-6">
         <h2 className="text-xl font-bold text-white mb-8">Seller Dashboard</h2>

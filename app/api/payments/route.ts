@@ -3,154 +3,176 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
-    const { amount, email, coffeeLinkId, message } = await request.json()
+    const { amount, email, coffeeLinkId, message, currency = 'USD', donorName, inline = false } = await request.json()
 
     console.log('💳 Payment request received:', {
       amount,
       email,
       coffeeLinkId,
+      currency,
       messageLength: message?.length || 0
     })
 
     // Validate required fields
     if (!amount || !email || !coffeeLinkId) {
-      console.error('❌ Missing required fields:', { amount, email, coffeeLinkId })
-      return NextResponse.json(
-        { error: 'Missing required fields: amount, email, coffeeLinkId' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Validate amount
-    if (amount < 1 || amount > 1000) {
-      console.error('❌ Invalid amount:', amount)
-      return NextResponse.json(
-        { error: 'Amount must be between $1 and $1000' },
-        { status: 400 }
-      )
+    // Validate amount based on currency
+    const maxAmount = currency === 'MWK' ? 2000000 : 1000 // K2M for MWK, $1000 for USD
+    const minAmount = currency === 'MWK' ? 1000 : 1 // K1,000 for MWK, $1 for USD
+    
+    if (amount < minAmount || amount > maxAmount) {
+      return NextResponse.json({ 
+        error: `Amount must be between ${currency === 'MWK' ? 'K1,000' : '$1'} and ${currency === 'MWK' ? 'K2,000,000' : '$1,000'}` 
+      }, { status: 400 })
     }
 
-    // Get coffee link details from database
     const supabase = await createClient()
     
-    console.log('🔍 Searching for coffee link:', coffeeLinkId)
-    
+    // Verify coffee link exists
     const { data: coffeeLink, error: linkError } = await supabase
       .from('coffee_links')
       .select('user_id')
       .eq('coffee_link', coffeeLinkId)
       .single()
 
-    console.log('📋 Coffee link query results:', { coffeeLink, linkError })
+    if (linkError || !coffeeLink) {
+      console.error('❌ Coffee link not found:', coffeeLinkId)
+      return NextResponse.json({ error: 'Invalid coffee link' }, { status: 404 })
+    }
 
-    if (linkError) {
-      console.error('❌ Coffee link query error:', {
-        code: linkError.code,
-        message: linkError.message,
-        details: linkError.details
+    console.log('✅ Coffee link found')
+
+    // Generate payment reference
+    const paymentReference = `coffee-${coffeeLinkId}-${Date.now()}`
+
+    // ========== PAYCHANGU API INTEGRATION ==========
+    // Check if PayChangu secret key is available
+    if (!process.env.PAYCHANGU_SECRET_KEY) {
+      console.warn('⚠️ PAYCHANGU_SECRET_KEY not set, using test mode')
+      
+      // Return test checkout URL for development
+      const testCheckoutUrl = `${process.env.NEXT_PUBLIC_APP_URL}/payment/success?reference=${paymentReference}&amount=${amount}&email=${encodeURIComponent(email)}&test=true`
+      
+      return NextResponse.json({
+        checkout_url: testCheckoutUrl,
+        reference: paymentReference,
+        test_mode: true
       })
-      
-      if (linkError.code === 'PGRST116') {
-        return NextResponse.json(
-          { error: 'Coffee link not found in database' },
-          { status: 404 }
-        )
-      }
-      
-      return NextResponse.json(
-        { error: `Database error: ${linkError.message}` },
-        { status: 500 }
-      )
     }
 
-    if (!coffeeLink) {
-      console.error('❌ No coffee link found for ID:', coffeeLinkId)
-      return NextResponse.json(
-        { error: 'Invalid coffee link' },
-        { status: 404 }
-      )
-    }
-
-    console.log('✅ Coffee link found:', coffeeLink)
-
-    // For now, let's simulate a successful payment response
-    // Remove this when you have real PayChangu credentials
-    const simulatedResponse = {
-      payment_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment/success?simulated=true&amount=${amount}`,
-      reference: `simulated-${Date.now()}`,
-      simulated: true
-    }
-
-    console.log('🎯 Returning simulated response:', simulatedResponse)
-
-    return NextResponse.json(simulatedResponse)
-
-    /* 
-    // UNCOMMENT THIS WHEN YOU HAVE PAYCHANGU CREDENTIALS:
-    
-    // Create payment with PayChangu
-    const paychanguResponse = await fetch('https://api.paychangu.com/v1/payments', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.PAYCHANGU_SECRET_KEY}`
+    // Create checkout session using PayChangu API
+    const paychanguBody = {
+      amount: currency === 'MWK' ? amount.toString() : (amount * 100).toString(),
+      currency: currency,
+      email: email,
+      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/webhook`,
+      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment/success?reference=${paymentReference}`,
+      tx_ref: paymentReference,
+      customization: {
+        title: "Buy Me Coffee",
+        description: "Support the creator's work"
       },
-      body: JSON.stringify({
-        amount: Math.round(amount * 100), // Convert to cents
-        currency: 'USD',
-        email: email,
-        reference: `coffee-${coffeeLinkId}-${Date.now()}`,
-        callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/webhook`,
-        redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment/success`,
-        metadata: {
-          coffee_link_id: coffeeLinkId,
-          user_id: coffeeLink.user_id,
-          donor_email: email,
-          donor_message: message,
-          type: 'coffee_donation'
-        }
-      })
-    })
-
-    const paychanguData = await paychanguResponse.json()
-
-    if (!paychanguResponse.ok) {
-      console.error('PayChangu API error:', paychanguData)
-      return NextResponse.json(
-        { error: paychanguData.message || 'Payment initiation failed' },
-        { status: 500 }
-      )
-    }
-
-    // Store payment record in database (pending status)
-    const { error: dbError } = await supabase
-      .from('coffee_payments')
-      .insert({
-        payment_reference: paychanguData.data.reference,
+      meta: {
         coffee_link_id: coffeeLinkId,
-        amount: amount,
+        user_id: coffeeLink.user_id,
         donor_email: email,
+        donor_name: donorName,
         donor_message: message,
-        status: 'pending',
-        metadata: paychanguData.data
-      })
-
-    if (dbError) {
-      console.error('Database error:', dbError)
-      // Continue anyway - the payment was initiated successfully
+        type: 'coffee_donation'
+      }
     }
 
-    return NextResponse.json({
-      payment_url: paychanguData.data.authorization_url,
-      reference: paychanguData.data.reference
-    })
-    */
+    console.log('🎯 Creating PayChangu checkout session:', paychanguBody)
+
+    try {
+      // Call PayChangu API to create checkout session
+      const paychanguResponse = await fetch('https://api.paychangu.com/payment', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${process.env.PAYCHANGU_SECRET_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(paychanguBody)
+      })
+
+      const paychanguData = await paychanguResponse.json()
+      console.log('📥 PayChangu API response:', paychanguData)
+
+      if (!paychanguResponse.ok) {
+        console.error('❌ PayChangu API error:', paychanguData)
+        throw new Error(paychanguData.message || 'PayChangu API error')
+      }
+
+      // Get the checkout URL from PayChangu response
+      const paychanguCheckoutUrl = paychanguData.data?.checkout_url || paychanguData.checkout_url
+      console.log('🎯 PayChangu checkout URL:', paychanguCheckoutUrl)
+
+      if (!paychanguCheckoutUrl) {
+        throw new Error('No checkout URL received from PayChangu')
+      }
+
+      // Return the PayChangu URL
+      return NextResponse.json({
+        checkout_url: paychanguCheckoutUrl,
+        reference: paymentReference
+      })
+
+    } catch (paychanguError) {
+      console.error('❌ PayChangu API error:', paychanguError)
+      
+      // Fallback to test URL if PayChangu fails
+      const testCheckoutUrl = `${process.env.NEXT_PUBLIC_APP_URL}/payment/success?reference=${paymentReference}&amount=${amount}&email=${encodeURIComponent(email)}&test=true`
+      
+      return NextResponse.json({
+        checkout_url: testCheckoutUrl,
+        reference: paymentReference,
+        fallback: true,
+        error: paychanguError.message
+      })
+    }
+
+    // Create payment record in database (with error handling)
+    try {
+      const { error: paymentError } = await supabase
+        .from('coffee_payments')
+        .insert({
+          payment_reference: paymentReference,
+          coffee_link_id: coffeeLinkId,
+          amount: amount,
+          currency: currency,
+          donor_email: email,
+          donor_name: donorName,
+          donor_message: message,
+          status: 'pending'
+        })
+
+      if (paymentError) {
+        console.error('❌ Error creating payment record:', paymentError)
+        // Don't fail the entire request if database insert fails
+        console.log('⚠️ Continuing with payment despite database error')
+      } else {
+        console.log('✅ Payment record created successfully')
+      }
+    } catch (dbError) {
+      console.error('❌ Database connection error:', dbError)
+      // Continue with payment even if database is not available
+      console.log('⚠️ Continuing with payment despite database connection issues')
+    }
 
   } catch (error) {
-    console.error('💥 Payment processing error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('💥 Payment processing error:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      error: error
+    })
+    
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
+    }, { status: 500 })
   }
 }

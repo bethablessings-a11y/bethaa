@@ -1,0 +1,41 @@
+{
+    "prompts": [
+      {
+        "title": "Project Setup",
+        "prompt": "Initialize a new Next.js project with TypeScript: `npx create-next-app@latest marketplace --typescript`. Install Tailwind CSS: `npm install -D tailwindcss postcss autoprefixer && npx tailwindcss init -p`. Configure Tailwind in `tailwind.config.js` with paths `./pages/**/*.{ts,tsx}`, `./components/**/*.{ts,tsx}`. Set up Prisma: `npm install @prisma/client && npm install -D prisma`. Run `npx prisma init` and configure `DATABASE_URL` for PostgreSQL in `.env`. Install NextAuth: `npm install next-auth`. Configure `[...nextauth].ts` in `pages/api/auth` with Email + Google provider. For file uploads, install `@aws-sdk/client-s3` or use Supabase: `npm install @supabase/supabase-js`."
+      },
+      {
+        "title": "Database Schema (Prisma)",
+        "prompt": "In `prisma/schema.prisma`, define models: User (id, name, email, role), Seller (id, userId, bio), Product (id, title, description, price, type, fileUrl, trailerUrl, status), Order (id, userId, productId, status), Payment (id, orderId, transactionId, status), Payout (id, sellerId, amount, status). Run `npx prisma migrate dev --name init`."
+      },
+      {
+        "title": "Product Upload Flow",
+        "prompt": "Create API route `pages/api/upload.ts` to generate presigned S3 or Supabase URLs. Validate uploads by MIME type: accept `.zip`, `.pdf`, `.docx`, `.mp4`, `.mp3`. Save file metadata in Prisma Product model (fileType, size, checksum). Enforce teaser file size under 50MB. On client side, build an upload form using React Hook Form and Tailwind."
+      },
+      {
+        "title": "Payment Integration (PayChangu)",
+        "prompt": "Install axios: `npm install axios`. Create API route `pages/api/checkout.ts` to call PayChangu API with product price and orderId. Store transactionId in Payments table. Implement webhook route `pages/api/paychangu-webhook.ts` to verify signatures and update order/payment status. On payment success, set Order status to 'PAID'."
+      },
+      {
+        "title": "Secure Digital Delivery",
+        "prompt": "Create API route `pages/api/download.ts` to check if user has a PAID order for the product. If valid, return a signed S3 or Supabase download URL. Restrict to 5 downloads or 30 days by tracking downloadCount and expiry in Order model. For trailers, embed video/audio player using a signed streaming URL from S3/CloudFront or Supabase."
+      },
+      {
+        "title": "Seller Dashboard",
+        "prompt": "Create `/dashboard/seller` page. Show tabs for Upload Product, My Sales, Payout Requests. Use a form with file upload fields for teaser + main file. Show product status (Pending, Approved, Live) with Tailwind badges. Implement API route for sellers to request payouts, store request in Payout table."
+      },
+      {
+        "title": "Buyer Dashboard",
+        "prompt": "Create `/dashboard/buyer` page. Show order history from Prisma Orders where userId = current user. Add Library tab for purchased products with download links (calling /api/download). Embed trailer player for preview. Show order status and purchase date."
+      },
+      {
+        "title": "Admin Dashboard",
+        "prompt": "Create `/dashboard/admin` page. Fetch all products with status 'Pending'. Provide Approve/Reject buttons calling an API route to update product status. Add a table of sellers with suspend option. Add refund management: API route to mark order refunded, update Payments. Add payout oversight: show all payouts with statuses."
+      },
+      {
+        "title": "Extra Features",
+        "prompt": "Add ProductReviews table in Prisma with (id, productId, userId, rating, comment). Create API routes for posting/retrieving reviews. Implement search: `/api/search` filtering by product type, category, seller name. Add analytics table with product views, sales count, revenue. Show seller analytics in dashboard. Install Nodemailer: `npm install nodemailer`. Configure email notifications for payment success, payout requests, and product approvals."
+      }
+    ]
+  }
+  

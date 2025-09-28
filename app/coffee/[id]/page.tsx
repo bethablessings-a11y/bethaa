@@ -25,15 +25,16 @@ export default function CoffeePage({ params }: PageProps) {
   const [donorMessage, setDonorMessage] = useState("")
   const [error, setError] = useState<string>("")
   const [creatorName, setCreatorName] = useState<string>("")
+  const [paymentStatus, setPaymentStatus] = useState<string>("")
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const supabase = createClient()
 
-  // Define functions FIRST, before useEffect hooks
+  // ========== DEFINE ALL FUNCTIONS FIRST ==========
 
   const fetchCoffeeLink = async (id: string) => {
     try {
       console.log('🔎 Searching for coffee link:', id)
 
-      // First, get the coffee link without the relationship join
       const { data: coffeeData, error: coffeeError } = await supabase
         .from('coffee_links')
         .select('*')
@@ -58,7 +59,6 @@ export default function CoffeePage({ params }: PageProps) {
         return
       }
 
-      // Success! Now get creator info separately
       setCoffeeLink(coffeeData)
       await fetchCreatorInfo(coffeeData.user_id)
       
@@ -73,7 +73,6 @@ export default function CoffeePage({ params }: PageProps) {
     try {
       console.log('👤 Fetching creator info for user:', userId)
       
-      // Try to get creator info from profiles table if it exists
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('full_name, username')
@@ -98,85 +97,111 @@ export default function CoffeePage({ params }: PageProps) {
     }
   }
 
-  const initiatePayment = async (amount: number) => {
-    if (!donorEmail) {
-      alert("Please enter your email address")
-      return
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(donorEmail)) {
-      alert("Please enter a valid email address")
-      return
-    }
-
-    setPaymentLoading(true)
-
-    try {
-      console.log('💳 Initiating payment request...', { 
-        amount, 
-        donorEmail, 
-        coffeeLinkId: coffeeId,
-        donorMessageLength: donorMessage.length
-      })
-
-      const paymentData = {
-        amount: amount,
-        email: donorEmail,
-        coffeeLinkId: coffeeId,
-        message: donorMessage,
-        userId: coffeeLink?.user_id
-      }
-
-      console.log('📤 Sending payment data:', paymentData)
-
-      const response = await fetch('/api/payments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(paymentData)
-      })
-
-      const data = await response.json()
-
-      console.log('📥 Payment API response:', {
-        status: response.status,
-        ok: response.ok,
-        data: data
-      })
-
-      if (!response.ok) {
-        throw new Error(data.error || `Payment failed with status: ${response.status}`)
-      }
-
-      console.log('✅ Payment initiated successfully, redirecting...')
-      
-      // Redirect to payment page
-      window.location.href = data.payment_url
-
-    } catch (error: any) {
-      console.error('❌ Payment error:', error)
-      alert(`Payment failed: ${error.message}`)
-    } finally {
-      setPaymentLoading(false)
-    }
+const initiatePayment = async (amount: number) => {
+  if (!donorEmail) {
+    alert("Please enter your email address")
+    return
   }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRegex.test(donorEmail)) {
+    alert("Please enter a valid email address")
+    return
+  }
+
+  setPaymentLoading(true)
+
+  try {
+    console.log('💳 Initiating PayChangu inline checkout...')
+
+    const paymentData = {
+      amount: amount,
+      email: donorEmail,
+      coffeeLinkId: coffeeId,
+      message: donorMessage,
+      userId: coffeeLink?.user_id,
+      inline: true // Request inline checkout
+    }
+
+    const response = await fetch('/api/payments', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(paymentData)
+    })
+
+    const data = await response.json()
+
+    console.log('📥 Payment API response:', data)
+    console.log('📊 Response status:', response.status)
+    console.log('📊 Response ok:', response.ok)
+
+    if (!response.ok) {
+      console.error('❌ Payment API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: data,
+        url: response.url
+      })
+      throw new Error(data.error || data.message || `Payment failed with status: ${response.status}`)
+    }
+
+    // Check if we got a valid checkout URL
+    if (!data.checkout_url) {
+      console.error('❌ No checkout URL received:', {
+        data: data,
+        hasCheckoutUrl: !!data.checkout_url,
+        keys: Object.keys(data)
+      })
+      throw new Error('No checkout URL received from payment API')
+    }
+
+    console.log('✅ Payment initiated successfully!')
+    console.log('🔗 Checkout URL:', data.checkout_url)
+    console.log('📋 Reference:', data.reference)
+    
+    // Redirect to dedicated checkout page
+    console.log('🔄 Redirecting to checkout page...')
+    const checkoutParams = new URLSearchParams({
+      amount: amount.toString(),
+      currency: 'USD', // You can make this dynamic based on user selection
+      email: donorEmail,
+      message: donorMessage,
+      coffeeLinkId: coffeeId,
+      creatorName: creatorName
+    })
+    
+    window.location.href = `/checkout?${checkoutParams.toString()}`
+
+  } catch (error: any) {
+    console.error('❌ Payment error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      error: error
+    })
+    
+    const errorMessage = error.message || 'Unknown payment error occurred'
+    alert(`Payment failed: ${errorMessage}`)
+    setPaymentLoading(false)
+  }
+}
+
 
   // Define handleDonation AFTER initiatePayment
   const handleDonation = async (amount: number) => {
     await initiatePayment(amount)
   }
 
-  // NOW use useEffect hooks AFTER all functions are defined
+  // ========== NOW USE EFFECT HOOKS ==========
+
   useEffect(() => {
     const initialize = async () => {
       try {
         const unwrappedParams = await params
         setCoffeeId(unwrappedParams.id)
         console.log('🔍 Coffee ID from URL:', unwrappedParams.id)
-        
         await fetchCoffeeLink(unwrappedParams.id)
       } catch (err) {
         setError(`Initialization error: ${err}`)
@@ -185,6 +210,8 @@ export default function CoffeePage({ params }: PageProps) {
     }
     initialize()
   }, [params])
+
+  // ========== RENDER LOGIC ==========
 
   if (loading) {
     return (
@@ -213,7 +240,6 @@ export default function CoffeePage({ params }: PageProps) {
     )
   }
 
-  // Success page with payment integration
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-purple-900 flex items-center justify-center p-4">
       <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl text-center max-w-md w-full border border-slate-700">
@@ -221,17 +247,13 @@ export default function CoffeePage({ params }: PageProps) {
         <div className="mb-8">
           <div className="text-6xl mb-4">☕</div>
           <h1 className="text-3xl font-bold text-white mb-2">Buy Me Coffee</h1>
-          <p className="text-slate-300">
-            Support {creatorName}'s work
-          </p>
+          <p className="text-slate-300">Support {creatorName}'s work</p>
         </div>
 
         {/* Donor Information */}
         <div className="mb-6 space-y-4">
           <div>
-            <label className="block text-slate-300 text-sm mb-2 text-left">
-              Your Email *
-            </label>
+            <label className="block text-slate-300 text-sm mb-2 text-left">Your Email *</label>
             <input
               type="email"
               value={donorEmail}
@@ -243,9 +265,7 @@ export default function CoffeePage({ params }: PageProps) {
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-2 text-left">
-              Message (Optional)
-            </label>
+            <label className="block text-slate-300 text-sm mb-2 text-left">Message (Optional)</label>
             <textarea 
               value={donorMessage}
               onChange={(e) => setDonorMessage(e.target.value)}
@@ -253,6 +273,18 @@ export default function CoffeePage({ params }: PageProps) {
               className="w-full p-3 bg-slate-700 text-white rounded-lg border border-slate-600 resize-none focus:border-purple-500 focus:outline-none"
               rows={3}
             />
+          </div>
+        </div>
+
+        {/* Currency Selector */}
+        <div className="mb-6">
+          <div className="flex items-center justify-center space-x-4 mb-4">
+            <button className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium">
+              USD ($)
+            </button>
+            <button className="px-4 py-2 bg-slate-600 text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-500">
+              MWK (K)
+            </button>
           </div>
         </div>
 
@@ -269,12 +301,13 @@ export default function CoffeePage({ params }: PageProps) {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Processing...
+                Preparing Checkout...
               </span>
             ) : (
               <>
                 <span className="text-xl mr-2">☕</span>
                 Buy a Coffee - $5
+                <span className="text-sm opacity-80 ml-2">(≈ K8,500)</span>
               </>
             )}
           </button>
@@ -284,12 +317,11 @@ export default function CoffeePage({ params }: PageProps) {
             disabled={paymentLoading || !donorEmail}
             className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-xl font-semibold hover:from-orange-600 hover:to-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 shadow-lg"
           >
-            {paymentLoading ? (
-              "Processing..."
-            ) : (
+            {paymentLoading ? "Preparing Checkout..." : (
               <>
                 <span className="text-xl mr-2">🍕</span>
                 Buy Lunch - $10
+                <span className="text-sm opacity-80 ml-2">(≈ K17,000)</span>
               </>
             )}
           </button>
@@ -299,12 +331,11 @@ export default function CoffeePage({ params }: PageProps) {
             disabled={paymentLoading || !donorEmail}
             className="w-full bg-gradient-to-r from-red-500 to-pink-500 text-white py-4 rounded-xl font-semibold hover:from-red-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 shadow-lg"
           >
-            {paymentLoading ? (
-              "Processing..."
-            ) : (
+            {paymentLoading ? "Preparing Checkout..." : (
               <>
                 <span className="text-xl mr-2">🍽️</span>
                 Buy Dinner - $20
+                <span className="text-sm opacity-80 ml-2">(≈ K34,000)</span>
               </>
             )}
           </button>
@@ -317,13 +348,6 @@ export default function CoffeePage({ params }: PageProps) {
               className="flex-1 p-3 bg-slate-700 text-white rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
               min="1"
               max="1000"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  const input = e.target as HTMLInputElement
-                  const amount = input.value ? parseInt(input.value) : 0
-                  if (amount > 0) handleDonation(amount)
-                }
-              }}
             />
             <button 
               onClick={() => {
@@ -347,16 +371,20 @@ export default function CoffeePage({ params }: PageProps) {
         <div className="text-slate-400 text-sm space-y-2">
           <div className="flex items-center justify-center space-x-2">
             <span>🔒</span>
-            <span>Secure payment by PayChangu</span>
+            <span>Secure checkout by PayChangu</span>
           </div>
-          <div className="flex items-center justify-center space-x-2">
+          <div className="flex items-center justify-center space-x-2 text-xs">
             <span>💳</span>
-            <span>Accepts cards, mobile money, and bank transfers</span>
+            <span>Credit/Debit Cards • Airtel Money • TNM Mpamba • Bank Transfer</span>
           </div>
-          <p className="text-xs text-slate-500">Your support goes directly to the creator</p>
+          <div className="flex items-center justify-center space-x-4 text-xs text-slate-500">
+            <span>🇲🇼</span>
+            <span>Supports Malawian payment methods</span>
+          </div>
+          <p className="text-xs text-slate-500">You'll be redirected to a secure checkout page with all payment methods</p>
         </div>
 
-        {/* Debug info (remove in production) */}
+        {/* Debug info */}
         <div className="mt-4 p-2 bg-slate-900 rounded text-xs">
           <div className="text-slate-500 font-mono">
             <div>Link ID: {coffeeId}</div>
@@ -364,6 +392,44 @@ export default function CoffeePage({ params }: PageProps) {
           </div>
         </div>
       </div>
+
+
+        {/* Payment Status Modal */}
+        {showPaymentModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-md w-full mx-4">
+              <div className="text-6xl mb-4">
+                {paymentStatus.includes('successful') ? '🎉' : 
+                 paymentStatus.includes('failed') ? '❌' : 
+                 paymentStatus.includes('processing') ? '⏳' : '💳'}
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">Payment Status</h2>
+              <p className="text-gray-600 mb-6">{paymentStatus}</p>
+              
+              {paymentStatus.includes('successful') && (
+                <div className="bg-green-50 p-4 rounded-lg mb-4">
+                  <p className="text-green-700 text-sm">
+                    Redirecting to success page...
+                  </p>
+                </div>
+              )}
+              
+              <div className="space-y-3">
+                {!paymentStatus.includes('successful') && (
+                  <button
+                    onClick={() => {
+                      setShowPaymentModal(false)
+                      setPaymentStatus('')
+                    }}
+                    className="w-full bg-gray-200 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   )
 }

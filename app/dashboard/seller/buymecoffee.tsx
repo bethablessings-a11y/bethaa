@@ -187,6 +187,7 @@ useEffect(() => {
       let result
 
       if (existingLink) {
+        // Update existing coffee link
         result = await supabase
           .from('coffee_links')
           .update({ 
@@ -196,15 +197,35 @@ useEffect(() => {
           .eq('id', existingLink.id)
           .select()
       } else {
-        result = await supabase
+        // Check if user already has a coffee link (handle unique constraint)
+        const { data: existingUserLink } = await supabase
           .from('coffee_links')
-          .insert({
-            user_id: user.id,
-            coffee_link: newLink,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
+          .select('id, coffee_link')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        if (existingUserLink) {
+          // Update existing user's coffee link
+          result = await supabase
+            .from('coffee_links')
+            .update({ 
+              coffee_link: newLink,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingUserLink.id)
+            .select()
+        } else {
+          // Create new coffee link
+          result = await supabase
+            .from('coffee_links')
+            .insert({
+              user_id: user.id,
+              coffee_link: newLink,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .select()
+        }
       }
 
       if (result.error) {
@@ -490,15 +511,98 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Debug test button */}
-        <div className="mt-4 text-center">
+        {/* Debug test buttons */}
+        <div className="mt-4 text-center space-x-2">
           <button
             onClick={testDatabaseAccess}
             className="px-4 py-2 bg-gray-600 text-white rounded-lg text-sm"
           >
             Test Database Connection
           </button>
+          <button
+            onClick={async () => {
+              try {
+                const response = await fetch('/api/test-payment')
+                const data = await response.json()
+                console.log('🧪 API Test Result:', data)
+                alert(`API Test: ${data.status}\nDatabase: ${JSON.stringify(data.database)}`)
+              } catch (error) {
+                console.error('API Test Error:', error)
+                alert('API Test Failed')
+              }
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
+          >
+            Test API Endpoint
+          </button>
         </div>
+
+        {/* Analytics Section */}
+        {payments.length > 0 && (
+          <div className="mt-8 bg-slate-700 p-6 rounded-lg">
+            <h3 className="text-lg font-semibold text-white mb-4">📊 Coffee Analytics</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-slate-600 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-green-400">
+                  {formatCurrency(payments.reduce((sum, p) => sum + Number(p.amount), 0))}
+                </div>
+                <div className="text-slate-300 text-sm">Total Raised</div>
+              </div>
+              <div className="bg-slate-600 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-blue-400">{payments.length}</div>
+                <div className="text-slate-300 text-sm">Total Donations</div>
+              </div>
+              <div className="bg-slate-600 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-purple-400">
+                  {formatCurrency(payments.reduce((sum, p) => sum + Number(p.amount), 0) / payments.length || 0)}
+                </div>
+                <div className="text-slate-300 text-sm">Avg Donation</div>
+              </div>
+              <div className="bg-slate-600 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-yellow-400">
+                  {payments.filter(p => p.status === 'completed').length}
+                </div>
+                <div className="text-slate-300 text-sm">Completed</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Customization Options */}
+        {coffeeLink && (
+          <div className="mt-6 bg-slate-700 p-6 rounded-lg">
+            <h3 className="text-lg font-semibold text-white mb-4">🎨 Customize Your Coffee Page</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-slate-300 text-sm mb-2">Page Title</label>
+                <input
+                  type="text"
+                  placeholder="e.g., Support My Creative Work"
+                  className="w-full p-3 bg-slate-600 text-white rounded-lg border border-slate-500 focus:border-purple-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 text-sm mb-2">Description</label>
+                <textarea
+                  placeholder="Tell your supporters what you're working on and how their support helps..."
+                  className="w-full p-3 bg-slate-600 text-white rounded-lg border border-slate-500 focus:border-purple-500 focus:outline-none resize-none"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 text-sm mb-2">Funding Goal (Optional)</label>
+                <input
+                  type="number"
+                  placeholder="e.g., 1000"
+                  className="w-full p-3 bg-slate-600 text-white rounded-lg border border-slate-500 focus:border-purple-500 focus:outline-none"
+                />
+              </div>
+              <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                Save Customization
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Instructions */}
         <div className="mt-6 p-4 bg-slate-600 rounded-lg">
@@ -519,6 +623,10 @@ useEffect(() => {
             <li className="flex items-start space-x-2">
               <span className="text-green-400">✓</span>
               <span>You can regenerate the link anytime for security</span>
+            </li>
+            <li className="flex items-start space-x-2">
+              <span className="text-green-400">✓</span>
+              <span>Supports Malawian payment methods (Airtel Money, TNM Mpamba)</span>
             </li>
           </ul>
         </div>

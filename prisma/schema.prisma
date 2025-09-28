@@ -144,3 +144,41 @@ enum PayoutStatus {
   PAID
   REJECTED
 }
+
+// Buy Me Coffee Tables
+model CoffeeLink {
+  id          String   @id @default(cuid())
+  user_id     String
+  coffee_link String   @unique
+  title       String?  // Custom title for the coffee page
+  description String?  // Custom description
+  goal_amount Decimal? @db.Decimal(10, 2) // Optional funding goal
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  // Relations
+  payments CoffeePayment[]
+
+  @@map("coffee_links")
+}
+
+model CoffeePayment {
+  id                String   @id @default(cuid())
+  payment_reference String   @unique
+  coffee_link_id    String
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("USD")
+  donor_email       String
+  donor_name        String?
+  donor_message     String?
+  status            String   @default("pending") // pending, completed, failed, refunded
+  metadata          Json?    // Store PayChangu response data
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  // Relations
+  coffee_link CoffeeLink @relation(fields: [coffee_link_id], references: [coffee_link], onDelete: Cascade)
+
+  @@map("coffee_payments")
+}
