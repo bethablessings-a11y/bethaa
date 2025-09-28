@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 
 interface CheckoutData {
   amount: number
@@ -18,26 +17,18 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>("")
   const [checkoutUrl, setCheckoutUrl] = useState<string>("")
-  const [paymentStatus, setPaymentStatus] = useState<string>("")
   const searchParams = useSearchParams()
-  const supabase = createClient()
 
   useEffect(() => {
     const initializeCheckout = async () => {
       try {
         // Get checkout data from URL parameters
-        const amount = parseFloat(searchParams.get('amount') || '0')
-        const currency = searchParams.get('currency') || 'USD'
+        const amount = parseFloat(searchParams.get('amount') || '5000') // Default K5,000
+        const currency = 'MWK' // Always use Malawian Kwacha
         const email = searchParams.get('email') || ''
         const message = searchParams.get('message') || ''
-        const coffeeLinkId = searchParams.get('coffeeLinkId') || ''
+        const coffeeLinkId = searchParams.get('coffeeLinkId') || 'default'
         const creatorName = searchParams.get('creatorName') || 'the creator'
-
-        if (!amount || !email || !coffeeLinkId) {
-          setError('Missing required checkout information')
-          setLoading(false)
-          return
-        }
 
         setCheckoutData({
           amount,
@@ -48,8 +39,8 @@ export default function CheckoutPage() {
           creatorName
         })
 
-        // Create PayChangu checkout session
-        await createCheckoutSession({
+        // Create PayChangu payment session
+        await createPaymentSession({
           amount,
           currency,
           email,
@@ -68,68 +59,41 @@ export default function CheckoutPage() {
     initializeCheckout()
   }, [searchParams])
 
-  const createCheckoutSession = async (data: CheckoutData) => {
+  const createPaymentSession = async (data: CheckoutData) => {
     try {
-      console.log('💳 Creating PayChangu checkout session:', data)
+      console.log('💳 Creating PayChangu payment session:', data)
 
-      const response = await fetch('/api/payments', {
+      const response = await fetch('/api/create-payment', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           amount: data.amount,
-          email: data.email,
-          coffeeLinkId: data.coffeeLinkId,
-          message: data.message,
           currency: data.currency,
-          inline: true
+          email: data.email,
+          message: data.message,
+          coffeeLinkId: data.coffeeLinkId,
+          creatorName: data.creatorName
         })
       })
 
       const result = await response.json()
 
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to create checkout session')
+        throw new Error(result.error || 'Failed to create payment session')
       }
 
-      console.log('✅ Checkout session created:', result)
+      console.log('✅ Payment session created:', result)
       setCheckoutUrl(result.checkout_url)
       setLoading(false)
 
     } catch (error) {
-      console.error('❌ Checkout session error:', error)
-      setError(error instanceof Error ? error.message : 'Failed to create checkout session')
+      console.error('❌ Payment session error:', error)
+      setError(error instanceof Error ? error.message : 'Failed to create payment session')
       setLoading(false)
     }
   }
-
-  const handlePaymentComplete = (event: MessageEvent) => {
-    // Listen for PayChangu payment completion messages
-    if (event.origin !== 'https://checkout.paychangu.com' && event.origin !== 'https://test-checkout.paychangu.com') {
-      return
-    }
-
-    console.log('📨 PayChangu message received:', event.data)
-
-    if (event.data.type === 'payment_completed') {
-      console.log('✅ Payment completed!')
-      setPaymentStatus('Payment successful! Thank you for your support!')
-      
-      // Redirect to success page
-      setTimeout(() => {
-        window.location.href = `/payment/success?reference=${event.data.reference}`
-      }, 2000)
-    } else if (event.data.type === 'payment_failed') {
-      console.log('❌ Payment failed')
-      setPaymentStatus('Payment failed. Please try again.')
-    }
-  }
-
-  useEffect(() => {
-    window.addEventListener('message', handlePaymentComplete)
-    return () => window.removeEventListener('message', handlePaymentComplete)
-  }, [])
 
   if (loading) {
     return (
@@ -164,28 +128,11 @@ export default function CheckoutPage() {
     )
   }
 
-  if (paymentStatus) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-purple-900 flex items-center justify-center p-4">
-        <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl text-center max-w-md w-full border border-slate-700">
-          <div className="text-6xl mb-4">
-            {paymentStatus.includes('successful') ? '🎉' : '❌'}
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Payment Status</h1>
-          <p className="text-slate-300 mb-6">{paymentStatus}</p>
-          {paymentStatus.includes('successful') && (
-            <p className="text-slate-400 text-sm">Redirecting to success page...</p>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-purple-900">
       {/* Header */}
       <div className="bg-slate-800 border-b border-slate-700">
-        <div className="max-w-4xl mx-auto px-4 py-6">
+        <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-white">Complete Your Payment</h1>
@@ -193,10 +140,10 @@ export default function CheckoutPage() {
             </div>
             <div className="text-right">
               <div className="text-2xl font-bold text-green-400">
-                {checkoutData?.currency === 'MWK' ? `K${checkoutData?.amount.toLocaleString()}` : `$${checkoutData?.amount}`}
+                K{checkoutData?.amount.toLocaleString()}
               </div>
               <div className="text-slate-400 text-sm">
-                {checkoutData?.currency === 'MWK' ? 'Malawian Kwacha' : 'US Dollar'}
+                Malawian Kwacha
               </div>
             </div>
           </div>
@@ -204,7 +151,7 @@ export default function CheckoutPage() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Payment Form */}
           <div className="lg:col-span-2">
@@ -243,7 +190,7 @@ export default function CheckoutPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-slate-300">Support Amount</span>
                   <span className="text-white font-semibold">
-                    {checkoutData?.currency === 'MWK' ? `K${checkoutData?.amount.toLocaleString()}` : `$${checkoutData?.amount}`}
+                    K{checkoutData?.amount.toLocaleString()}
                   </span>
                 </div>
                 
@@ -254,7 +201,7 @@ export default function CheckoutPage() {
                 
                 <div className="flex justify-between items-center">
                   <span className="text-slate-300">Currency</span>
-                  <span className="text-white">{checkoutData?.currency}</span>
+                  <span className="text-white">Malawian Kwacha (MWK)</span>
                 </div>
                 
                 {checkoutData?.message && (
@@ -266,23 +213,29 @@ export default function CheckoutPage() {
               </div>
 
               <div className="mt-6 p-4 bg-slate-700 rounded-lg">
-                <h4 className="text-white font-semibold mb-2">Available Payment Methods</h4>
-                <div className="space-y-2 text-sm text-slate-300">
-                  <div className="flex items-center space-x-2">
-                    <span>💳</span>
-                    <span>Credit/Debit Cards</span>
+                <h4 className="text-white font-semibold mb-3">Available Payment Methods</h4>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="flex items-center space-x-2 p-2 bg-slate-600 rounded-lg">
+                    <span className="text-lg">💳</span>
+                    <span className="text-slate-200">Cards</span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span>📱</span>
-                    <span>Airtel Money</span>
+                  <div className="flex items-center space-x-2 p-2 bg-slate-600 rounded-lg">
+                    <span className="text-lg">📱</span>
+                    <span className="text-slate-200">Airtel Money</span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span>📱</span>
-                    <span>TNM Mpamba</span>
+                  <div className="flex items-center space-x-2 p-2 bg-slate-600 rounded-lg">
+                    <span className="text-lg">📱</span>
+                    <span className="text-slate-200">TNM Mpamba</span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span>🏦</span>
-                    <span>Bank Transfer</span>
+                  <div className="flex items-center space-x-2 p-2 bg-slate-600 rounded-lg">
+                    <span className="text-lg">🏦</span>
+                    <span className="text-slate-200">Bank Transfer</span>
+                  </div>
+                </div>
+                <div className="mt-3 p-2 bg-green-900/30 border border-green-700 rounded-lg">
+                  <div className="flex items-center space-x-2 text-green-300 text-xs">
+                    <span>🇲🇼</span>
+                    <span>Mobile money payments are instant and secure</span>
                   </div>
                 </div>
               </div>

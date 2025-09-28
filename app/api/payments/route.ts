@@ -3,13 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
-    const { amount, email, coffeeLinkId, message, currency = 'USD', donorName, inline = false } = await request.json()
+    const { amount, email, coffeeLinkId, message, currency = 'USD', donorName, paymentMethod, inline = false } = await request.json()
 
     console.log('💳 Payment request received:', {
       amount,
       email,
       coffeeLinkId,
       currency,
+      paymentMethod,
       messageLength: message?.length || 0
     })
 
@@ -81,6 +82,14 @@ export async function POST(request: NextRequest) {
         donor_name: donorName,
         donor_message: message,
         type: 'coffee_donation'
+      },
+      // Enable specific payment methods based on selection
+      payment_methods: paymentMethod ? {
+        [paymentMethod]: true
+      } : {
+        mobile_money: true,
+        card: true,
+        bank_transfer: true
       }
     }
 

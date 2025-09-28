@@ -115,15 +115,15 @@ const initiatePayment = async (amount: number) => {
     console.log('💳 Initiating PayChangu inline checkout...')
 
     const paymentData = {
-      amount: amount,
+      amount: amount * 1700, // Convert USD to MWK (approximate rate)
+      currency: 'MWK',
       email: donorEmail,
       coffeeLinkId: coffeeId,
       message: donorMessage,
-      userId: coffeeLink?.user_id,
-      inline: true // Request inline checkout
+      creatorName: creatorName
     }
 
-    const response = await fetch('/api/payments', {
+    const response = await fetch('/api/create-payment', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -164,8 +164,8 @@ const initiatePayment = async (amount: number) => {
     // Redirect to dedicated checkout page
     console.log('🔄 Redirecting to checkout page...')
     const checkoutParams = new URLSearchParams({
-      amount: amount.toString(),
-      currency: 'USD', // You can make this dynamic based on user selection
+      amount: (amount * 1700).toString(), // Convert to MWK
+      currency: 'MWK',
       email: donorEmail,
       message: donorMessage,
       coffeeLinkId: coffeeId,
@@ -276,16 +276,16 @@ const initiatePayment = async (amount: number) => {
           </div>
         </div>
 
-        {/* Currency Selector */}
+        {/* Currency Info */}
         <div className="mb-6">
           <div className="flex items-center justify-center space-x-4 mb-4">
-            <button className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium">
-              USD ($)
-            </button>
-            <button className="px-4 py-2 bg-slate-600 text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-500">
-              MWK (K)
-            </button>
+            <div className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium">
+              MWK (K) - Malawian Kwacha
+            </div>
           </div>
+          <p className="text-slate-400 text-xs text-center">
+            All payments are processed in Malawian Kwacha
+          </p>
         </div>
 
         {/* Donation Options */}
@@ -306,8 +306,8 @@ const initiatePayment = async (amount: number) => {
             ) : (
               <>
                 <span className="text-xl mr-2">☕</span>
-                Buy a Coffee - $5
-                <span className="text-sm opacity-80 ml-2">(≈ K8,500)</span>
+                Buy a Coffee - K8,500
+                <span className="text-sm opacity-80 ml-2">(≈ $5)</span>
               </>
             )}
           </button>
@@ -320,8 +320,8 @@ const initiatePayment = async (amount: number) => {
             {paymentLoading ? "Preparing Checkout..." : (
               <>
                 <span className="text-xl mr-2">🍕</span>
-                Buy Lunch - $10
-                <span className="text-sm opacity-80 ml-2">(≈ K17,000)</span>
+                Buy Lunch - K17,000
+                <span className="text-sm opacity-80 ml-2">(≈ $10)</span>
               </>
             )}
           </button>
@@ -334,8 +334,8 @@ const initiatePayment = async (amount: number) => {
             {paymentLoading ? "Preparing Checkout..." : (
               <>
                 <span className="text-xl mr-2">🍽️</span>
-                Buy Dinner - $20
-                <span className="text-sm opacity-80 ml-2">(≈ K34,000)</span>
+                Buy Dinner - K34,000
+                <span className="text-sm opacity-80 ml-2">(≈ $20)</span>
               </>
             )}
           </button>
@@ -344,19 +344,19 @@ const initiatePayment = async (amount: number) => {
           <div className="flex space-x-3">
             <input
               type="number"
-              placeholder="Custom amount"
+              placeholder="Custom amount (MWK)"
               className="flex-1 p-3 bg-slate-700 text-white rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
-              min="1"
-              max="1000"
+              min="1000"
+              max="1700000"
             />
             <button 
               onClick={() => {
                 const input = document.querySelector('input[type="number"]') as HTMLInputElement
                 const amount = input?.value ? parseInt(input.value) : 0
-                if (amount > 0 && amount <= 1000) {
-                  handleDonation(amount)
+                if (amount >= 1000 && amount <= 1700000) {
+                  handleDonation(amount / 1700) // Convert MWK to USD for the function
                 } else {
-                  alert('Please enter an amount between $1 and $1000')
+                  alert('Please enter an amount between K1,000 and K1,700,000')
                 }
               }}
               disabled={paymentLoading || !donorEmail}
